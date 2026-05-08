@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>RideFlow — Login</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Segoe UI',sans-serif;background:linear-gradient(135deg,#0f2027,#203a43,#2c5364);min-height:100vh;display:flex;align-items:center;justify-content:center;}
+.container{background:#fff;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.4);width:420px;overflow:hidden;}
+.header{background:linear-gradient(135deg,#1a73e8,#0d47a1);padding:32px;text-align:center;color:#fff;}
+.header h1{font-size:2rem;font-weight:700;letter-spacing:-1px;}
+.header p{opacity:.85;margin-top:6px;font-size:.95rem;}
+.logo{font-size:2.5rem;margin-bottom:8px;}
+.tabs{display:flex;border-bottom:2px solid #f0f0f0;}
+.tab{flex:1;padding:14px;text-align:center;cursor:pointer;font-weight:600;color:#666;transition:.2s;font-size:.9rem;}
+.tab.active{color:#1a73e8;border-bottom:2px solid #1a73e8;margin-bottom:-2px;}
+.form-body{padding:28px;}
+.form-group{margin-bottom:18px;}
+label{display:block;font-size:.82rem;font-weight:600;color:#444;margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px;}
+input,select{width:100%;padding:11px 14px;border:1.5px solid #ddd;border-radius:8px;font-size:.95rem;transition:.2s;outline:none;background:#fafafa;}
+input:focus,select:focus{border-color:#1a73e8;background:#fff;box-shadow:0 0 0 3px rgba(26,115,232,.1);}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.btn{width:100%;padding:13px;background:linear-gradient(135deg,#1a73e8,#0d47a1);color:#fff;border:none;border-radius:8px;font-size:1rem;font-weight:600;cursor:pointer;transition:.2s;margin-top:6px;}
+.btn:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(26,115,232,.35);}
+.btn:active{transform:none;}
+.msg{padding:10px 14px;border-radius:8px;font-size:.88rem;margin-bottom:14px;display:none;}
+.msg.error{background:#fdecea;color:#c62828;border:1px solid #ef9a9a;}
+.msg.success{background:#e8f5e9;color:#2e7d32;border:1px solid #a5d6a7;}
+.demo-creds{background:#e3f2fd;border-radius:8px;padding:14px;margin-top:16px;font-size:.82rem;color:#1565c0;}
+.demo-creds strong{display:block;margin-bottom:6px;font-size:.85rem;}
+.cred{margin:3px 0;font-family:monospace;background:#bbdefb;padding:2px 6px;border-radius:4px;display:inline-block;margin-right:4px;cursor:pointer;}
+.divider{text-align:center;color:#aaa;font-size:.82rem;margin:8px 0;}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <div class="logo">🚗</div>
+    <h1>RideFlow</h1>
+    <p>Your ride, your way</p>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('login')">Login</div>
+    <div class="tab" onclick="switchTab('register')">Register</div>
+  </div>
+
+  <div class="form-body">
+    <!-- LOGIN FORM -->
+    <div id="loginForm">
+      <div id="loginMsg" class="msg"></div>
+      <div class="form-group">
+        <label>Email Address</label>
+        <input type="email" id="loginEmail" placeholder="you@example.com"/>
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="loginPass" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()"/>
+      </div>
+      <button class="btn" onclick="doLogin()">Sign In</button>
+
+      <div class="demo-creds">
+        <strong>🧪 Demo Credentials (click to fill):</strong>
+        <div>
+          <span class="cred" onclick="fill('admin@rideflow.pk')">Admin</span>
+          <span class="cred" onclick="fill('sara@rider.pk')">Rider</span>
+          <span class="cred" onclick="fill('ahmed@driver.pk')">Driver</span>
+          &nbsp;→ password: <code>password123</code>
+        </div>
+      </div>
+    </div>
+
+    <!-- REGISTER FORM -->
+    <div id="registerForm" style="display:none">
+      <div id="regMsg" class="msg"></div>
+      <div class="row">
+        <div class="form-group">
+          <label>Full Name</label>
+          <input type="text" id="regName" placeholder="Your Name"/>
+        </div>
+        <div class="form-group">
+          <label>Role</label>
+          <select id="regRole" onchange="toggleDriverFields()">
+            <option value="rider">Rider</option>
+            <option value="driver">Driver</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" id="regEmail" placeholder="you@example.com"/>
+      </div>
+      <div class="row">
+        <div class="form-group">
+          <label>Phone</label>
+          <input type="text" id="regPhone" placeholder="03001234567"/>
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" id="regPass" placeholder="••••••••"/>
+        </div>
+      </div>
+      <div id="driverFields" style="display:none">
+        <div class="divider">— Driver Info —</div>
+        <div class="row">
+          <div class="form-group">
+            <label>License No.</label>
+            <input type="text" id="regLicense" placeholder="LHR-2024-001"/>
+          </div>
+          <div class="form-group">
+            <label>CNIC</label>
+            <input type="text" id="regCnic" placeholder="35201-1234567-1"/>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>City</label>
+          <select id="regCity">
+            <option>Islamabad</option><option>Lahore</option>
+            <option>Karachi</option><option>Rawalpindi</option>
+          </select>
+        </div>
+      </div>
+      <button class="btn" onclick="doRegister()">Create Account</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = 'http://localhost:5000/api';
+
+// Redirect if already logged in
+const token = localStorage.getItem('rf_token');
+const role  = localStorage.getItem('rf_role');
+if (token && role) {
+  if (role === 'admin')  location.href = 'admin.html';
+  if (role === 'rider')  location.href = 'rider.html';
+  if (role === 'driver') location.href = 'driver.html';
+}
+
+function switchTab(tab) {
+  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', (i===0) === (tab==='login')));
+  document.getElementById('loginForm').style.display    = tab==='login'    ? '' : 'none';
+  document.getElementById('registerForm').style.display = tab==='register' ? '' : 'none';
+}
+
+function showMsg(id, text, type='error') {
+  const el = document.getElementById(id);
+  el.textContent = text; el.className = `msg ${type}`; el.style.display = 'block';
+  setTimeout(() => el.style.display = 'none', 4000);
+}
+
+function fill(email) {
+  document.getElementById('loginEmail').value = email;
+  document.getElementById('loginPass').value  = 'password123';
+}
+
+function toggleDriverFields() {
+  document.getElementById('driverFields').style.display =
+    document.getElementById('regRole').value === 'driver' ? '' : 'none';
+}
+
+async function doLogin() {
+  const email    = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPass').value;
+  if (!email || !password) return showMsg('loginMsg','Please enter email and password');
+  try {
+    const r = await fetch(`${API}/auth/login`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({email, password})
+    });
+    const data = await r.json();
+    if (!r.ok) return showMsg('loginMsg', data.error || 'Login failed');
+    localStorage.setItem('rf_token', data.token);
+    localStorage.setItem('rf_role',  data.user.role);
+    localStorage.setItem('rf_user',  JSON.stringify(data.user));
+    showMsg('loginMsg','Login successful! Redirecting...','success');
+    setTimeout(() => {
+      if (data.user.role === 'admin')  location.href = 'admin.html';
+      if (data.user.role === 'rider')  location.href = 'rider.html';
+      if (data.user.role === 'driver') location.href = 'driver.html';
+    }, 600);
+  } catch { showMsg('loginMsg','Cannot connect to server. Is the backend running?'); }
+}
+
+async function doRegister() {
+  const body = {
+    full_name: document.getElementById('regName').value.trim(),
+    email:     document.getElementById('regEmail').value.trim(),
+    phone:     document.getElementById('regPhone').value.trim(),
+    password:  document.getElementById('regPass').value,
+    role:      document.getElementById('regRole').value,
+    license:   document.getElementById('regLicense')?.value.trim(),
+    cnic:      document.getElementById('regCnic')?.value.trim(),
+    city:      document.getElementById('regCity')?.value
+  };
+  if (!body.full_name || !body.email || !body.phone || !body.password)
+    return showMsg('regMsg','All fields are required');
+  try {
+    const r = await fetch(`${API}/auth/register`, {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)
+    });
+    const data = await r.json();
+    if (!r.ok) return showMsg('regMsg', data.error || 'Registration failed');
+    showMsg('regMsg', data.message, 'success');
+    setTimeout(() => switchTab('login'), 1500);
+  } catch { showMsg('regMsg','Cannot connect to server.'); }
+}
+</script>
+</body>
+</html>

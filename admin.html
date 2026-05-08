@@ -1,0 +1,761 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>RideFlow — Admin Panel</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Segoe UI',sans-serif;background:#f0f2f8;min-height:100vh;display:flex;}
+.sidebar{width:240px;background:linear-gradient(180deg,#1e1b4b,#312e81);color:#fff;display:flex;flex-direction:column;position:fixed;height:100vh;z-index:10;overflow-y:auto;}
+.sidebar-logo{padding:22px 20px;border-bottom:1px solid rgba(255,255,255,.12);}
+.sidebar-logo h2{font-size:1.25rem;font-weight:700;letter-spacing:-.5px;}
+.sidebar-logo p{font-size:.75rem;opacity:.7;margin-top:2px;}
+.nav-section{padding:10px 20px 4px;font-size:.68rem;font-weight:700;opacity:.5;text-transform:uppercase;letter-spacing:1px;}
+.nav-item{display:flex;align-items:center;gap:11px;padding:11px 20px;cursor:pointer;transition:.2s;font-size:.88rem;border-left:3px solid transparent;}
+.nav-item:hover,.nav-item.active{background:rgba(255,255,255,.12);border-left-color:#818cf8;}
+.nav-item .icon{font-size:1.1rem;width:22px;text-align:center;}
+.sidebar-footer{margin-top:auto;padding:16px 20px;border-top:1px solid rgba(255,255,255,.12);}
+.user-info{font-size:.8rem;opacity:.85;margin-bottom:10px;}
+.logout-btn{width:100%;padding:9px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:7px;cursor:pointer;font-size:.82rem;}
+.logout-btn:hover{background:rgba(255,255,255,.2);}
+.main{margin-left:240px;flex:1;padding:26px;}
+.page{display:none;} .page.active{display:block;}
+.page-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:22px;}
+.page-header h1{font-size:1.55rem;font-weight:700;color:#1e1b4b;}
+.page-header p{color:#666;font-size:.88rem;margin-top:3px;}
+.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px;}
+.card{background:#fff;border-radius:12px;padding:18px 20px;box-shadow:0 2px 8px rgba(0,0,0,.06);display:flex;align-items:center;gap:14px;}
+.card-icon{font-size:2rem;width:48px;height:48px;display:flex;align-items:center;justify-content:center;border-radius:10px;}
+.icon-blue{background:#eff6ff;} .icon-green{background:#f0fdf4;} .icon-purple{background:#f5f3ff;} .icon-orange{background:#fff7ed;}
+.card-val{font-size:1.45rem;font-weight:800;color:#1e1b4b;line-height:1;}
+.card-label{font-size:.75rem;color:#888;margin-top:3px;text-transform:uppercase;letter-spacing:.4px;}
+.card-delta{font-size:.78rem;margin-top:4px;font-weight:600;}
+.card-delta.up{color:#16a34a;} .card-delta.down{color:#dc2626;}
+.panel{background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.06);margin-bottom:20px;overflow:hidden;}
+.panel-header{padding:16px 20px;border-bottom:1px solid #f0f0f0;display:flex;justify-content:space-between;align-items:center;}
+.panel-header h3{font-size:.95rem;font-weight:700;color:#1e1b4b;}
+.panel-body{padding:20px;}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px;}
+.chart-wrap{position:relative;height:260px;}
+table{width:100%;border-collapse:collapse;}
+th{background:#f8f9ff;padding:11px 16px;font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:#555;text-align:left;}
+td{padding:11px 16px;border-top:1px solid #f5f5f5;font-size:.85rem;color:#333;}
+tr:hover td{background:#fafaff;}
+.badge{display:inline-block;padding:3px 9px;border-radius:20px;font-size:.73rem;font-weight:600;}
+.badge-green{background:#dcfce7;color:#166534;} .badge-blue{background:#dbeafe;color:#1e40af;}
+.badge-yellow{background:#fef9c3;color:#854d0e;} .badge-red{background:#fee2e2;color:#991b1b;}
+.badge-gray{background:#f3f4f6;color:#374151;} .badge-purple{background:#f5f3ff;color:#6d28d9;}
+.btn{padding:9px 18px;border:none;border-radius:7px;font-weight:600;cursor:pointer;font-size:.85rem;transition:.2s;}
+.btn-primary{background:linear-gradient(135deg,#4f46e5,#312e81);color:#fff;}
+.btn-primary:hover{box-shadow:0 4px 14px rgba(79,70,229,.35);}
+.btn-danger{background:#ef4444;color:#fff;} .btn-danger:hover{background:#dc2626;}
+.btn-success{background:#16a34a;color:#fff;}
+.btn-outline{background:transparent;border:1.5px solid #4f46e5;color:#4f46e5;}
+.btn-sm{padding:5px 12px;font-size:.78rem;}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+label{display:block;font-size:.75rem;font-weight:600;color:#555;margin-bottom:4px;text-transform:uppercase;letter-spacing:.3px;}
+input,select{width:100%;padding:9px 12px;border:1.5px solid #e0e0e0;border-radius:7px;font-size:.88rem;outline:none;transition:.2s;background:#fafafa;}
+input:focus,select:focus{border-color:#4f46e5;background:#fff;}
+.filter-row{display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap;}
+.filter-row input,.filter-row select{flex:1;min-width:140px;max-width:200px;}
+.msg{padding:10px 14px;border-radius:8px;font-size:.85rem;margin:10px 0;display:none;}
+.msg.error{background:#fdecea;color:#c62828;} .msg.success{background:#e8f5e9;color:#2e7d32;}
+.notif-item{padding:13px 16px;border-bottom:1px solid #f5f5f5;display:flex;justify-content:space-between;align-items:center;}
+.notif-item.unread{background:#fafaff;}
+.notif-msg{font-size:.88rem;color:#333;flex:1;}
+.notif-time{font-size:.78rem;color:#aaa;margin-left:12px;white-space:nowrap;}
+.empty{text-align:center;padding:32px;color:#aaa;font-size:.9rem;}
+.tabs{display:flex;border-bottom:2px solid #f0f0f0;margin-bottom:16px;}
+.tab{padding:10px 18px;cursor:pointer;font-size:.88rem;font-weight:600;color:#888;border-bottom:2px solid transparent;margin-bottom:-2px;}
+.tab.active{color:#4f46e5;border-bottom-color:#4f46e5;}
+.report-view{display:none;} .report-view.active{display:block;}
+</style>
+</head>
+<body>
+<div class="sidebar">
+  <div class="sidebar-logo"><h2>🚗 RideFlow</h2><p>Admin Control Panel</p></div>
+
+  <div class="nav-section">Overview</div>
+  <div class="nav-item active" onclick="showPage('dashboard')"><span class="icon">📊</span>Dashboard</div>
+  <div class="nav-item" onclick="showPage('notifications')"><span class="icon">🔔</span>Notifications <span id="notifBadge" style="background:#ef4444;color:#fff;border-radius:10px;padding:1px 7px;font-size:.72rem;margin-left:auto"></span></div>
+
+  <div class="nav-section">Management</div>
+  <div class="nav-item" onclick="showPage('users')"><span class="icon">👥</span>Users</div>
+  <div class="nav-item" onclick="showPage('vehicles')"><span class="icon">🚙</span>Vehicles</div>
+  <div class="nav-item" onclick="showPage('rides')"><span class="icon">🗺️</span>All Rides</div>
+  <div class="nav-item" onclick="showPage('complaints')"><span class="icon">📝</span>Complaints</div>
+
+  <div class="nav-section">Configuration</div>
+  <div class="nav-item" onclick="showPage('fares')"><span class="icon">💲</span>Fare Rules</div>
+  <div class="nav-item" onclick="showPage('promos')"><span class="icon">🎟️</span>Promo Codes</div>
+
+  <div class="nav-section">Reports & Analytics</div>
+  <div class="nav-item" onclick="showPage('reports')"><span class="icon">📈</span>Revenue Reports</div>
+  <div class="nav-item" onclick="showPage('driver-stats')"><span class="icon">🏆</span>Driver Stats</div>
+  <div class="nav-item" onclick="showPage('active-rides')"><span class="icon">🔴</span>Active Rides View</div>
+  <div class="nav-item" onclick="showPage('top-drivers')"><span class="icon">⭐</span>Top Drivers View</div>
+
+  <div class="sidebar-footer">
+    <div class="user-info" id="sidebarUser">Loading...</div>
+    <button class="logout-btn" onclick="logout()">🚪 Logout</button>
+  </div>
+</div>
+
+<div class="main">
+
+  <!-- DASHBOARD -->
+  <div class="page active" id="page-dashboard">
+    <div class="page-header"><div><h1>Dashboard</h1><p>Platform overview and live analytics</p></div>
+      <button class="btn btn-outline" onclick="loadDashboard()">🔄 Refresh</button></div>
+    <div class="cards" id="dashCards">
+      <div class="card"><div class="card-icon icon-blue">👥</div><div><div class="card-val" id="d-users">—</div><div class="card-label">Active Users</div></div></div>
+      <div class="card"><div class="card-icon icon-green">✅</div><div><div class="card-val" id="d-rides">—</div><div class="card-label">Completed Rides</div></div></div>
+      <div class="card"><div class="card-icon icon-purple">💰</div><div><div class="card-val" id="d-rev">—</div><div class="card-label">Total Revenue</div></div></div>
+      <div class="card"><div class="card-icon icon-orange">🔴</div><div><div class="card-val" id="d-active">—</div><div class="card-label">Active Rides</div></div></div>
+    </div>
+    <div class="grid-2">
+      <div class="panel"><div class="panel-header"><h3>📈 Revenue (Last 14 Days)</h3></div><div class="panel-body"><div class="chart-wrap"><canvas id="revenueChart"></canvas></div></div></div>
+      <div class="panel"><div class="panel-header"><h3>💳 Payment Methods</h3></div><div class="panel-body"><div class="chart-wrap"><canvas id="methodChart"></canvas></div></div></div>
+    </div>
+    <div class="grid-2">
+      <div class="panel"><div class="panel-header"><h3>🚗 Live Active Rides</h3></div>
+        <table><thead><tr><th>#</th><th>Rider</th><th>Driver</th><th>City</th><th>Status</th></tr></thead>
+        <tbody id="liveRidesBody"></tbody></table></div>
+      <div class="panel"><div class="panel-header"><h3>🔔 Recent Alerts</h3></div>
+        <div id="dashAlerts"></div></div>
+    </div>
+  </div>
+
+  <!-- NOTIFICATIONS -->
+  <div class="page" id="page-notifications">
+    <div class="page-header"><h1>Notifications</h1><button class="btn btn-outline" onclick="loadNotifications()">🔄 Refresh</button></div>
+    <div class="panel"><div id="notifList"><div class="empty">Loading...</div></div></div>
+  </div>
+
+  <!-- USERS -->
+  <div class="page" id="page-users">
+    <div class="page-header"><h1>User Management</h1></div>
+    <div class="panel">
+      <div class="panel-header"><h3>All Users</h3></div>
+      <div class="panel-body">
+        <div class="filter-row">
+          <input id="userSearch" placeholder="🔍 Search name or email" oninput="loadUsers()"/>
+          <select id="userRoleFilter" onchange="loadUsers()">
+            <option value="">All Roles</option><option value="rider">Rider</option>
+            <option value="driver">Driver</option><option value="admin">Admin</option>
+          </select>
+          <select id="userStatusFilter" onchange="loadUsers()">
+            <option value="">All Status</option><option value="active">Active</option>
+            <option value="suspended">Suspended</option><option value="deleted">Deleted</option>
+          </select>
+        </div>
+        <div class="table-wrap" style="border-radius:8px;overflow:hidden">
+          <table><thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Phone</th><th>Role</th><th>Status</th><th>Joined</th><th>Actions</th></tr></thead>
+          <tbody id="usersBody"></tbody></table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- VEHICLES -->
+  <div class="page" id="page-vehicles">
+    <div class="page-header"><h1>Vehicle Management</h1></div>
+    <div class="panel"><div class="panel-header"><h3>All Registered Vehicles</h3></div>
+      <table><thead><tr><th>ID</th><th>Vehicle</th><th>Plate</th><th>Type</th><th>Owner</th><th>Year</th><th>Status</th><th>Action</th></tr></thead>
+      <tbody id="vehiclesBody"></tbody></table></div>
+  </div>
+
+  <!-- RIDES -->
+  <div class="page" id="page-rides">
+    <div class="page-header"><h1>All Rides</h1><p>Full trip report — INNER JOIN across Riders, Drivers, Vehicles, Payments</p></div>
+    <div class="panel">
+      <div class="panel-header"><h3>Ride Log</h3></div>
+      <div class="panel-body">
+        <div class="filter-row">
+          <select id="rideStatusFilter" onchange="loadRides()">
+            <option value="">All Statuses</option><option value="completed">Completed</option>
+            <option value="requested">Requested</option><option value="in_progress">In Progress</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+          <select id="rideCityFilter" onchange="loadRides()">
+            <option value="">All Cities</option><option>Islamabad</option><option>Lahore</option>
+            <option>Karachi</option><option>Rawalpindi</option>
+          </select>
+        </div>
+        <table><thead><tr><th>#</th><th>Rider</th><th>Driver</th><th>City</th><th>Route</th><th>Fare</th><th>Payment</th><th>Status</th><th>Date</th></tr></thead>
+        <tbody id="ridesBody"></tbody></table>
+      </div>
+    </div>
+  </div>
+
+  <!-- COMPLAINTS -->
+  <div class="page" id="page-complaints">
+    <div class="page-header"><h1>Complaints</h1></div>
+    <div class="panel"><div class="panel-header"><h3>All Complaints</h3></div>
+      <table><thead><tr><th>ID</th><th>User</th><th>Subject</th><th>Status</th><th>Date</th><th>Action</th></tr></thead>
+      <tbody id="complaintsBody"></tbody></table></div>
+  </div>
+
+  <!-- FARE RULES -->
+  <div class="page" id="page-fares">
+    <div class="page-header"><h1>Fare Rules</h1><p>Configure pricing per vehicle type with surge multiplier</p></div>
+    <div id="fareCards" style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px"></div>
+  </div>
+
+  <!-- PROMO CODES -->
+  <div class="page" id="page-promos">
+    <div class="page-header"><h1>Promo Codes</h1><button class="btn btn-primary" onclick="showPromoForm()">+ New Promo</button></div>
+    <div class="panel" id="promoFormPanel" style="display:none;margin-bottom:16px">
+      <div class="panel-header"><h3>Create Promo Code</h3></div>
+      <div class="panel-body">
+        <div id="promoMsg" class="msg"></div>
+        <div class="form-row">
+          <div><label>Code</label><input id="pCode" placeholder="e.g. SUMMER30"/></div>
+          <div><label>Expires On</label><input type="date" id="pExp"/></div>
+          <div><label>Discount %</label><input type="number" id="pPct" placeholder="e.g. 20" oninput="document.getElementById('pAmt').value=''"/></div>
+          <div><label>Flat Discount (Rs.)</label><input type="number" id="pAmt" placeholder="e.g. 50" oninput="document.getElementById('pPct').value=''"/></div>
+          <div><label>Usage Limit</label><input type="number" id="pLimit" value="100"/></div>
+        </div>
+        <button class="btn btn-primary" style="margin-top:8px" onclick="createPromo()">Create</button>
+      </div>
+    </div>
+    <div class="panel"><div class="panel-header"><h3>All Promo Codes</h3></div>
+      <table><thead><tr><th>Code</th><th>Discount</th><th>Used</th><th>Limit</th><th>Expires</th><th>Status</th></tr></thead>
+      <tbody id="promosBody"></tbody></table></div>
+  </div>
+
+  <!-- REPORTS -->
+  <div class="page" id="page-reports">
+    <div class="page-header"><h1>Revenue Reports</h1><p>Aggregate SUM/AVG/COUNT queries + stored procedure results</p></div>
+    <div class="panel panel-body" style="margin-bottom:20px;padding:20px">
+      <div class="filter-row" style="margin:0">
+        <div><label>From</label><input type="date" id="repStart"/></div>
+        <div><label>To</label><input type="date" id="repEnd"/></div>
+        <button class="btn btn-primary" style="margin-top:18px" onclick="loadReports()">Generate Report</button>
+      </div>
+    </div>
+    <div class="grid-2">
+      <div class="panel"><div class="panel-header"><h3>📊 Revenue by City (SUM)</h3></div>
+        <table><thead><tr><th>City</th><th>Rides</th><th>Revenue</th><th>Avg Fare</th></tr></thead>
+        <tbody id="cityRevBody"></tbody></table></div>
+      <div class="panel"><div class="panel-header"><h3>💳 By Payment Method</h3></div>
+        <table><thead><tr><th>Method</th><th>Count</th><th>Total</th></tr></thead>
+        <tbody id="methodRevBody"></tbody></table></div>
+    </div>
+    <div class="panel"><div class="panel-header"><h3>📈 Daily Revenue (Last 30 Days)</h3></div>
+      <div class="panel-body"><div class="chart-wrap" style="height:220px"><canvas id="dailyRevChart"></canvas></div></div></div>
+    <div class="panel"><div class="panel-header"><h3>🎟️ Promo Code Usage (JOIN Payments + PromoCodes)</h3></div>
+      <table><thead><tr><th>Rider</th><th>Promo</th><th>City</th><th>Amount</th><th>Discount</th><th>Method</th></tr></thead>
+      <tbody id="promoUsageBody"></tbody></table></div>
+  </div>
+
+  <!-- DRIVER STATS -->
+  <div class="page" id="page-driver-stats">
+    <div class="page-header"><h1>Driver Statistics</h1><p>COUNT trips per driver + HAVING AVG(rating) &lt; 3.5</p></div>
+    <div class="tabs">
+      <div class="tab active" onclick="switchReportTab('all')">All Drivers (COUNT + GROUP BY)</div>
+      <div class="tab" onclick="switchReportTab('low')">Low Rated (HAVING &lt; 3.5)</div>
+      <div class="tab" onclick="switchReportTab('riders')">All Riders (LEFT JOIN)</div>
+    </div>
+    <div class="report-view active" id="rv-all">
+      <div class="panel"><table><thead><tr><th>Driver</th><th>City</th><th>Trips</th><th>Rating</th><th>Earnings</th></tr></thead>
+        <tbody id="driverStatsBody"></tbody></table></div>
+    </div>
+    <div class="report-view" id="rv-low">
+      <div class="panel" style="border:2px solid #fee2e2">
+        <div class="panel-header" style="background:#fef2f2"><h3>⚠️ Drivers with AVG Rating &lt; 3.5 (HAVING clause)</h3></div>
+        <table><thead><tr><th>Driver</th><th>City</th><th>Avg Score</th><th>Ratings Count</th><th>Action</th></tr></thead>
+        <tbody id="lowRatedBody"></tbody></table></div>
+    </div>
+    <div class="report-view" id="rv-riders">
+      <div class="panel"><div class="panel-header"><h3>All Riders — incl. those with NO rides (LEFT JOIN)</h3></div>
+        <table><thead><tr><th>Rider</th><th>Email</th><th>Total Rides</th><th>Total Spent</th><th>Wallet</th><th>Rating</th></tr></thead>
+        <tbody id="ridersReportBody"></tbody></table></div>
+    </div>
+  </div>
+
+  <!-- ACTIVE RIDES VIEW -->
+  <div class="page" id="page-active-rides">
+    <div class="page-header"><h1>ActiveRidesView</h1><p>MySQL VIEW — all ongoing trips with rider & driver details</p></div>
+    <div class="panel"><div class="panel-header"><h3>SELECT * FROM ActiveRidesView</h3>
+      <button class="btn btn-sm btn-outline" onclick="loadActiveRidesView()">🔄 Refresh</button></div>
+      <table><thead><tr><th>#</th><th>Rider</th><th>Driver</th><th>Vehicle</th><th>City</th><th>Pickup → Dropoff</th><th>Status</th><th>Requested</th></tr></thead>
+      <tbody id="activeViewBody"></tbody></table></div>
+  </div>
+
+  <!-- TOP DRIVERS VIEW -->
+  <div class="page" id="page-top-drivers">
+    <div class="page-header"><h1>TopDriversView</h1><p>MySQL VIEW — drivers with avg rating ≥ 4.5 and verified status</p></div>
+    <div class="panel"><div class="panel-header"><h3>SELECT * FROM TopDriversView ORDER BY avg_rating DESC</h3></div>
+      <table><thead><tr><th>Driver</th><th>Phone</th><th>City</th><th>Rating</th><th>Total Rides</th><th>Earnings</th><th>Status</th></tr></thead>
+      <tbody id="topDriversBody"></tbody></table></div>
+  </div>
+</div>
+
+<script>
+const API   = 'http://localhost:5000/api';
+const token = localStorage.getItem('rf_token');
+const user  = JSON.parse(localStorage.getItem('rf_user') || '{}');
+if (!token || user.role !== 'admin') { location.href = 'index.html'; }
+const headers = { 'Content-Type':'application/json', 'Authorization':'Bearer '+token };
+
+document.getElementById('sidebarUser').innerHTML = `<b>${user.full_name}</b><br/><small>Administrator</small>`;
+
+function logout() { localStorage.clear(); location.href = 'index.html'; }
+
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-'+name)?.classList.add('active');
+  event?.target?.closest('.nav-item')?.classList.add('active');
+  const actions = {
+    dashboard:    loadDashboard,
+    notifications:loadNotifications,
+    users:        loadUsers,
+    vehicles:     loadVehicles,
+    rides:        loadRides,
+    complaints:   loadComplaints,
+    fares:        loadFares,
+    promos:       loadPromos,
+    reports:      () => { setDefaultDates(); loadReports(); },
+    'driver-stats':loadDriverStats,
+    'active-rides':loadActiveRidesView,
+    'top-drivers': loadTopDrivers
+  };
+  actions[name]?.();
+}
+
+function setDefaultDates() {
+  const end   = new Date(); const start = new Date(end - 30*86400000);
+  document.getElementById('repStart').value = start.toISOString().slice(0,10);
+  document.getElementById('repEnd').value   = end.toISOString().slice(0,10);
+}
+
+let revenueChartInst, methodChartInst, dailyRevChartInst;
+
+async function loadDashboard() {
+  try {
+    const r = await fetch(`${API}/admin/dashboard`, { headers });
+    const d = await r.json();
+    document.getElementById('d-users').textContent  = d.active_users || 0;
+    document.getElementById('d-rides').textContent  = d.completed_rides || 0;
+    document.getElementById('d-rev').textContent    = `Rs.${parseFloat(d.total_revenue||0).toLocaleString()}`;
+    document.getElementById('d-active').textContent = d.active_rides || 0;
+    const nb = d.unread_notifications;
+    document.getElementById('notifBadge').textContent = nb > 0 ? nb : '';
+
+    // Load charts
+    const end   = new Date().toISOString().slice(0,10);
+    const start = new Date(Date.now()-14*86400000).toISOString().slice(0,10);
+    const rr    = await fetch(`${API}/admin/reports/revenue?start=${start}&end=${end}`, { headers });
+    const rd    = await rr.json();
+
+    // Revenue chart
+    const labels = (rd.dailyRevenue||[]).map(r => r.day);
+    const vals   = (rd.dailyRevenue||[]).map(r => parseFloat(r.revenue));
+    const ctx1   = document.getElementById('revenueChart').getContext('2d');
+    if (revenueChartInst) revenueChartInst.destroy();
+    revenueChartInst = new Chart(ctx1, {
+      type:'line',
+      data:{ labels, datasets:[{ label:'Revenue (Rs.)', data:vals,
+        borderColor:'#4f46e5', backgroundColor:'rgba(79,70,229,.1)', tension:.4, fill:true,
+        pointBackgroundColor:'#4f46e5', pointRadius:4 }]},
+      options:{ responsive:true, maintainAspectRatio:false,
+        plugins:{legend:{display:false}},
+        scales:{y:{beginAtZero:true, ticks:{callback:v=>'Rs.'+v.toLocaleString()}}} }
+    });
+
+    // Payment method chart
+    const mLabels = (rd.byMethod||[]).map(m => m.method.toUpperCase());
+    const mVals   = (rd.byMethod||[]).map(m => parseFloat(m.total));
+    const ctx2    = document.getElementById('methodChart').getContext('2d');
+    if (methodChartInst) methodChartInst.destroy();
+    methodChartInst = new Chart(ctx2, {
+      type:'doughnut',
+      data:{ labels:mLabels, datasets:[{ data:mVals,
+        backgroundColor:['#4f46e5','#0d9488','#f59e0b','#ef4444'],
+        borderWidth:0 }]},
+      options:{ responsive:true, maintainAspectRatio:false,
+        plugins:{legend:{position:'bottom'}} }
+    });
+
+    // Live active rides mini table
+    const ar = await fetch(`${API}/admin/views/active-rides`, { headers });
+    const ad = await ar.json();
+    const statusBadge = { requested:'badge-yellow', accepted:'badge-blue', in_progress:'badge-green' };
+    document.getElementById('liveRidesBody').innerHTML = (ad.slice(0,6)||[]).map(r => `
+      <tr>
+        <td>#${r.ride_id}</td>
+        <td style="font-size:.82rem">${r.rider_name}</td>
+        <td style="font-size:.82rem">${r.driver_name||'Unassigned'}</td>
+        <td>${r.city}</td>
+        <td><span class="badge ${statusBadge[r.status]}">${r.status}</span></td>
+      </tr>`).join('') || '<tr><td colspan="5" class="empty">No active rides</td></tr>';
+
+    // Alerts
+    const nr = await fetch(`${API}/admin/notifications`, { headers });
+    const nd = await nr.json();
+    document.getElementById('dashAlerts').innerHTML = (nd.slice(0,4)||[]).map(n => `
+      <div class="notif-item ${n.is_read?'':'unread'}">
+        <div class="notif-msg">${n.message}</div>
+        <div class="notif-time">${new Date(n.created_at).toLocaleDateString()}</div>
+      </div>`).join('') || '<div class="empty">No alerts</div>';
+  } catch(e) { console.error(e); }
+}
+
+async function loadNotifications() {
+  const el = document.getElementById('notifList');
+  try {
+    const r = await fetch(`${API}/admin/notifications`, { headers });
+    const d = await r.json();
+    el.innerHTML = (d||[]).map(n => `
+      <div class="notif-item ${n.is_read?'':'unread'}">
+        <div class="notif-msg">${n.message}</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="notif-time">${new Date(n.created_at).toLocaleString()}</div>
+          ${!n.is_read ? `<button class="btn btn-sm btn-outline" onclick="markRead(${n.notif_id})">✓ Read</button>` : ''}
+        </div>
+      </div>`).join('') || '<div class="empty">No notifications</div>';
+  } catch { el.innerHTML = '<div class="empty">Failed to load</div>'; }
+}
+
+async function markRead(id) {
+  await fetch(`${API}/admin/notifications/${id}/read`, { method:'PUT', headers });
+  loadNotifications();
+}
+
+async function loadUsers() {
+  const search = document.getElementById('userSearch').value;
+  const role   = document.getElementById('userRoleFilter').value;
+  const status = document.getElementById('userStatusFilter').value;
+  const params = new URLSearchParams();
+  if (search) params.set('search', search);
+  if (role)   params.set('role', role);
+  if (status) params.set('status', status);
+  try {
+    const r = await fetch(`${API}/admin/users?${params}`, { headers });
+    const d = await r.json();
+    const roleBadge   = { admin:'badge-purple', driver:'badge-blue', rider:'badge-teal' };
+    const statusBadge = { active:'badge-green', suspended:'badge-yellow', deleted:'badge-red' };
+    document.getElementById('usersBody').innerHTML = (d||[]).map(u => `
+      <tr>
+        <td>${u.user_id}</td>
+        <td style="font-weight:600">${u.full_name}</td>
+        <td style="font-size:.82rem">${u.email}</td>
+        <td>${u.phone}</td>
+        <td><span class="badge ${roleBadge[u.role]}">${u.role}</span></td>
+        <td><span class="badge ${statusBadge[u.status]}">${u.status}</span></td>
+        <td style="font-size:.82rem">${new Date(u.created_at).toLocaleDateString()}</td>
+        <td>
+          ${u.status!=='suspended'?`<button class="btn btn-sm btn-danger" onclick="setUserStatus(${u.user_id},'suspended')">Suspend</button>`:''}
+          ${u.status==='suspended'?`<button class="btn btn-sm btn-success" onclick="setUserStatus(${u.user_id},'active')">Activate</button>`:''}
+        </td>
+      </tr>`).join('') || '<tr><td colspan="8" class="empty">No users found</td></tr>';
+  } catch {}
+}
+
+async function setUserStatus(id, status) {
+  if (!confirm(`Set user status to "${status}"?`)) return;
+  const r = await fetch(`${API}/admin/users/${id}/status`, { method:'PUT', headers, body: JSON.stringify({status}) });
+  const d = await r.json();
+  alert(d.message || d.error);
+  loadUsers();
+}
+
+async function loadVehicles() {
+  try {
+    const r = await fetch(`${API}/admin/vehicles`, { headers });
+    const d = await r.json();
+    const stBadge = { verified:'badge-green', pending:'badge-yellow', rejected:'badge-red' };
+    document.getElementById('vehiclesBody').innerHTML = (d||[]).map(v => `
+      <tr>
+        <td>${v.veh_id}</td>
+        <td style="font-weight:600">${v.make} ${v.model}</td>
+        <td><code>${v.plate}</code></td>
+        <td>${v.type_}</td>
+        <td style="font-size:.82rem">${v.owner_name}<br/><span style="color:#888">${v.owner_phone}</span></td>
+        <td>${v.year_}</td>
+        <td><span class="badge ${stBadge[v.verif_st]}">${v.verif_st}</span></td>
+        <td>
+          ${v.verif_st!=='verified'?`<button class="btn btn-sm btn-success" onclick="setVehicleStatus(${v.veh_id},'verified')">Verify</button>`:''}
+          ${v.verif_st!=='rejected'?`<button class="btn btn-sm btn-danger" onclick="setVehicleStatus(${v.veh_id},'rejected')">Reject</button>`:''}
+        </td>
+      </tr>`).join('') || '<tr><td colspan="8" class="empty">No vehicles</td></tr>';
+  } catch {}
+}
+
+async function setVehicleStatus(id, status) {
+  const r = await fetch(`${API}/admin/vehicles/${id}/status`, { method:'PUT', headers, body: JSON.stringify({verif_st:status}) });
+  const d = await r.json(); alert(d.message || d.error); loadVehicles();
+}
+
+async function loadRides() {
+  const status = document.getElementById('rideStatusFilter').value;
+  const city   = document.getElementById('rideCityFilter').value;
+  const params = new URLSearchParams();
+  if (status) params.set('status', status);
+  if (city)   params.set('city', city);
+  try {
+    const r = await fetch(`${API}/admin/rides?${params}`, { headers });
+    const d = await r.json();
+    const stBadge = { completed:'badge-green', cancelled:'badge-red', requested:'badge-yellow', accepted:'badge-blue', in_progress:'badge-blue' };
+    const paySt   = { completed:'badge-green', pending:'badge-yellow', failed:'badge-red', refunded:'badge-gray' };
+    document.getElementById('ridesBody').innerHTML = (d||[]).map(r => `
+      <tr>
+        <td>#${r.ride_id}</td>
+        <td style="font-size:.82rem">${r.rider_name}</td>
+        <td style="font-size:.82rem">${r.driver_name||'—'}</td>
+        <td>${r.city}</td>
+        <td style="font-size:.78rem;max-width:140px">${r.pickup}<br/>→ ${r.dropoff}</td>
+        <td>${r.fare ? 'Rs.'+parseFloat(r.fare).toFixed(2) : '—'}</td>
+        <td><span class="badge ${paySt[r.payment_status]||'badge-gray'}">${r.payment_status||'—'}</span></td>
+        <td><span class="badge ${stBadge[r.status]}">${r.status}</span></td>
+        <td style="font-size:.78rem">${new Date(r.req_at).toLocaleDateString()}</td>
+      </tr>`).join('') || '<tr><td colspan="9" class="empty">No rides found</td></tr>';
+  } catch {}
+}
+
+async function loadComplaints() {
+  try {
+    const r = await fetch(`${API}/admin/complaints`, { headers });
+    const d = await r.json();
+    const stBadge = { open:'badge-red', in_review:'badge-yellow', resolved:'badge-green', closed:'badge-gray' };
+    document.getElementById('complaintsBody').innerHTML = (d||[]).map(c => `
+      <tr>
+        <td>#${c.comp_id}</td>
+        <td style="font-size:.82rem">${c.user_name}<br/><span style="color:#888">${c.user_email}</span></td>
+        <td>${c.subject}</td>
+        <td><span class="badge ${stBadge[c.status]}">${c.status.replace('_',' ')}</span></td>
+        <td style="font-size:.82rem">${new Date(c.created_at).toLocaleDateString()}</td>
+        <td><select style="width:120px;padding:5px;font-size:.82rem" onchange="setComplaintStatus(${c.comp_id},this.value)">
+          <option value="open" ${c.status==='open'?'selected':''}>Open</option>
+          <option value="in_review" ${c.status==='in_review'?'selected':''}>In Review</option>
+          <option value="resolved" ${c.status==='resolved'?'selected':''}>Resolved</option>
+          <option value="closed" ${c.status==='closed'?'selected':''}>Closed</option>
+        </select></td>
+      </tr>`).join('') || '<tr><td colspan="6" class="empty">No complaints</td></tr>';
+  } catch {}
+}
+
+async function setComplaintStatus(id, status) {
+  await fetch(`${API}/admin/complaints/${id}/status`, { method:'PUT', headers, body: JSON.stringify({status}) });
+  loadComplaints();
+}
+
+async function loadFares() {
+  try {
+    const r = await fetch(`${API}/admin/fare-rules`, { headers });
+    const d = await r.json();
+    const typeIcon = { sedan:'🚗', suv:'🚙', bike:'🏍️', van:'🚐', rickshaw:'🛺', other:'🚕' };
+    document.getElementById('fareCards').innerHTML = (d||[]).map(f => `
+      <div class="panel">
+        <div class="panel-header"><h3>${typeIcon[f.v_type]||''} ${f.v_type.toUpperCase()}</h3>
+          <span class="badge ${f.active?'badge-green':'badge-red'}">${f.active?'Active':'Inactive'}</span></div>
+        <div class="panel-body">
+          <div style="display:grid;gap:10px">
+            <div><label>Base Rate (Rs.)</label><input type="number" id="fr_base_${f.rule_id}" value="${f.base_rate}" step="0.01"/></div>
+            <div><label>Per KM Rate (Rs.)</label><input type="number" id="fr_km_${f.rule_id}" value="${f.km_rate}" step="0.01"/></div>
+            <div><label>Minimum Fare (Rs.)</label><input type="number" id="fr_min_${f.rule_id}" value="${f.min_rate}" step="0.01"/></div>
+            <div><label>Surge Multiplier</label><input type="number" id="fr_surge_${f.rule_id}" value="${f.surge}" step="0.01" min="1"/></div>
+          </div>
+          <button class="btn btn-primary" style="margin-top:12px;width:100%" onclick="saveFare(${f.rule_id})">Save Changes</button>
+        </div>
+      </div>`).join('');
+  } catch {}
+}
+
+async function saveFare(id) {
+  const body = {
+    base_rate: document.getElementById(`fr_base_${id}`).value,
+    km_rate:   document.getElementById(`fr_km_${id}`).value,
+    min_rate:  document.getElementById(`fr_min_${id}`).value,
+    surge:     document.getElementById(`fr_surge_${id}`).value,
+    active: 1
+  };
+  const r = await fetch(`${API}/admin/fare-rules/${id}`, { method:'PUT', headers, body: JSON.stringify(body) });
+  const d = await r.json();
+  alert(d.message || d.error);
+}
+
+async function loadPromos() {
+  try {
+    const r = await fetch(`${API}/admin/promos`, { headers });
+    const d = await r.json();
+    document.getElementById('promosBody').innerHTML = (d||[]).map(p => `
+      <tr>
+        <td><code style="font-size:.9rem;font-weight:700;color:#4f46e5">${p.code}</code></td>
+        <td>${p.disc_pct ? p.disc_pct+'%' : 'Rs.'+p.disc_amt}</td>
+        <td>${p.count}</td>
+        <td>${p.limit}</td>
+        <td>${new Date(p.exp_date).toLocaleDateString()}</td>
+        <td><span class="badge ${p.active?'badge-green':'badge-red'}">${p.active?'Active':'Inactive'}</span></td>
+      </tr>`).join('') || '<tr><td colspan="6" class="empty">No promo codes</td></tr>';
+  } catch {}
+}
+
+function showPromoForm() {
+  const el = document.getElementById('promoFormPanel');
+  el.style.display = el.style.display === 'none' ? '' : 'none';
+}
+
+async function createPromo() {
+  const code    = document.getElementById('pCode').value.trim();
+  const exp_date= document.getElementById('pExp').value;
+  const disc_pct= parseFloat(document.getElementById('pPct').value) || null;
+  const disc_amt= parseFloat(document.getElementById('pAmt').value) || null;
+  const limit   = parseInt(document.getElementById('pLimit').value) || 100;
+  if (!code || !exp_date) return showPageMsg('promoMsg','Code and expiry date required');
+  if (!disc_pct && !disc_amt) return showPageMsg('promoMsg','Enter either % or flat discount');
+  const r = await fetch(`${API}/admin/promos`, { method:'POST', headers, body: JSON.stringify({code,disc_pct,disc_amt,exp_date,limit}) });
+  const d = await r.json();
+  if (r.ok) { showPageMsg('promoMsg', d.message, 'success'); loadPromos(); }
+  else showPageMsg('promoMsg', d.error);
+}
+
+function showPageMsg(id, txt, type='error') {
+  const el = document.getElementById(id);
+  el.textContent = txt; el.className=`msg ${type}`; el.style.display='block';
+  setTimeout(()=>el.style.display='none', 3500);
+}
+
+async function loadReports() {
+  const start = document.getElementById('repStart').value;
+  const end   = document.getElementById('repEnd').value;
+  try {
+    const r = await fetch(`${API}/admin/reports/revenue?start=${start}&end=${end}`, { headers });
+    const d = await r.json();
+
+    // City revenue table
+    document.getElementById('cityRevBody').innerHTML = (d.cityRevenue||[]).map(c => `
+      <tr>
+        <td style="font-weight:600">${c.city}</td>
+        <td>${c.total_payments}</td>
+        <td style="color:#4f46e5;font-weight:700">Rs.${parseFloat(c.total_revenue||0).toLocaleString()}</td>
+        <td>Rs.${parseFloat(c.avg_fare||0).toFixed(2)}</td>
+      </tr>`).join('') || '<tr><td colspan="4" class="empty">No data</td></tr>';
+
+    // Payment method table
+    document.getElementById('methodRevBody').innerHTML = (d.byMethod||[]).map(m => `
+      <tr>
+        <td style="text-transform:capitalize;font-weight:600">${m.method}</td>
+        <td>${m.count}</td>
+        <td style="color:#0d9488;font-weight:700">Rs.${parseFloat(m.total||0).toLocaleString()}</td>
+      </tr>`).join('') || '<tr><td colspan="3" class="empty">No data</td></tr>';
+
+    // Daily revenue chart
+    const labels = (d.dailyRevenue||[]).map(r => r.day);
+    const vals   = (d.dailyRevenue||[]).map(r => parseFloat(r.revenue));
+    const ctx    = document.getElementById('dailyRevChart').getContext('2d');
+    if (dailyRevChartInst) dailyRevChartInst.destroy();
+    dailyRevChartInst = new Chart(ctx, {
+      type:'bar',
+      data:{ labels, datasets:[{ label:'Daily Revenue (Rs.)', data:vals,
+        backgroundColor:'rgba(79,70,229,.7)', borderRadius:4 }]},
+      options:{ responsive:true, maintainAspectRatio:false,
+        plugins:{legend:{display:false}},
+        scales:{y:{beginAtZero:true, ticks:{callback:v=>'Rs.'+v}}} }
+    });
+
+    // Promo usage report
+    const pr = await fetch(`${API}/admin/reports/promos`, { headers });
+    const pd = await pr.json();
+    document.getElementById('promoUsageBody').innerHTML = (pd||[]).map(p => `
+      <tr>
+        <td>${p.rider_name}</td>
+        <td><code style="color:#4f46e5">${p.promo_code}</code></td>
+        <td>${p.city}</td>
+        <td>Rs.${parseFloat(p.amount||0).toFixed(2)}</td>
+        <td style="color:#16a34a">-Rs.${parseFloat(p.discount||0).toFixed(2)}</td>
+        <td>${p.method}</td>
+      </tr>`).join('') || '<tr><td colspan="6" class="empty">No promo usage</td></tr>';
+  } catch(e) { console.error(e); }
+}
+
+async function loadDriverStats() {
+  try {
+    const r = await fetch(`${API}/admin/reports/drivers`, { headers });
+    const d = await r.json();
+
+    document.getElementById('driverStatsBody').innerHTML = (d.tripCounts||[]).map(dr => `
+      <tr>
+        <td style="font-weight:600">${dr.full_name}</td>
+        <td>${dr.city}</td>
+        <td style="font-weight:700;color:#4f46e5">${dr.completed_trips}</td>
+        <td>${dr.avg_rating ? '⭐ '+dr.avg_rating : '—'}</td>
+        <td>Rs.${parseFloat(dr.total_earnings||0).toFixed(2)}</td>
+      </tr>`).join('') || '<tr><td colspan="5" class="empty">No data</td></tr>';
+
+    document.getElementById('lowRatedBody').innerHTML = (d.lowRated||[]).map(dr => `
+      <tr>
+        <td style="font-weight:600">${dr.full_name}</td>
+        <td>${dr.city}</td>
+        <td style="color:#ef4444;font-weight:700">⭐ ${parseFloat(dr.avg_score||0).toFixed(2)}</td>
+        <td>${dr.rating_count}</td>
+        <td><button class="btn btn-sm btn-danger" onclick="setUserStatus(${dr.user_id},'suspended')">Suspend</button></td>
+      </tr>`).join('') || '<tr><td colspan="5" class="empty">No low-rated drivers 🎉</td></tr>';
+
+    const rr = await fetch(`${API}/admin/reports/riders`, { headers });
+    const rd = await rr.json();
+    document.getElementById('ridersReportBody').innerHTML = (rd||[]).map(r => `
+      <tr>
+        <td style="font-weight:600">${r.full_name}</td>
+        <td style="font-size:.82rem">${r.email}</td>
+        <td style="font-weight:700;color:#4f46e5">${r.total_rides}</td>
+        <td>Rs.${parseFloat(r.total_spent||0).toFixed(2)}</td>
+        <td>Rs.${parseFloat(r.wallet_balance||0).toFixed(2)}</td>
+        <td>${r.avg_rating ? '⭐ '+r.avg_rating : '—'}</td>
+      </tr>`).join('') || '<tr><td colspan="6" class="empty">No riders</td></tr>';
+  } catch(e) { console.error(e); }
+}
+
+function switchReportTab(tab) {
+  document.querySelectorAll('.tab').forEach((t,i) => {
+    t.classList.toggle('active', ['all','low','riders'][i]===tab);
+  });
+  document.querySelectorAll('.report-view').forEach(v => v.classList.remove('active'));
+  document.getElementById('rv-'+tab).classList.add('active');
+}
+
+async function loadActiveRidesView() {
+  try {
+    const r = await fetch(`${API}/admin/views/active-rides`, { headers });
+    const d = await r.json();
+    const stBadge = { requested:'badge-yellow', accepted:'badge-blue', in_progress:'badge-green' };
+    document.getElementById('activeViewBody').innerHTML = (d||[]).map(r => `
+      <tr>
+        <td>#${r.ride_id}</td>
+        <td>${r.rider_name}</td>
+        <td>${r.driver_name||'<span style="color:#aaa">Unassigned</span>'}</td>
+        <td>${r.vehicle_make ? r.vehicle_make+' '+r.vehicle_model+' ('+r.vehicle_plate+')' : '—'}</td>
+        <td>${r.city}</td>
+        <td style="font-size:.82rem">${r.pickup}<br/>→ ${r.dropoff}</td>
+        <td><span class="badge ${stBadge[r.status]}">${r.status}</span></td>
+        <td style="font-size:.78rem">${new Date(r.req_at).toLocaleString()}</td>
+      </tr>`).join('') || '<tr><td colspan="8" class="empty">No active rides</td></tr>';
+  } catch {}
+}
+
+async function loadTopDrivers() {
+  try {
+    const r = await fetch(`${API}/admin/views/top-drivers`, { headers });
+    const d = await r.json();
+    document.getElementById('topDriversBody').innerHTML = (d||[]).map((dr,i) => `
+      <tr>
+        <td><b>${i===0?'🥇':i===1?'🥈':i===2?'🥉':'  '} ${dr.driver_name}</b></td>
+        <td>${dr.phone}</td>
+        <td>${dr.city}</td>
+        <td style="color:#f59e0b;font-weight:700">⭐ ${dr.avg_rating}</td>
+        <td style="font-weight:700;color:#4f46e5">${dr.total_rides}</td>
+        <td>Rs.${parseFloat(dr.total_earnings||0).toFixed(2)}</td>
+        <td><span class="badge badge-green">${dr.avail_status}</span></td>
+      </tr>`).join('') || '<tr><td colspan="7" class="empty">No top drivers found (need rating ≥ 4.5)</td></tr>';
+  } catch {}
+}
+
+// Initial load
+loadDashboard();
+setDefaultDates();
+</script>
+</body>
+</html>
