@@ -167,7 +167,7 @@ app.get('/api/rider/rides/active', auth, role('rider'), async (req, res) => {
        LEFT JOIN USERS u_d  ON r.driver_id = u_d.user_id
        LEFT JOIN DRIVERS d  ON r.driver_id = d.user_id
        LEFT JOIN VEHICLES v ON r.veh_id    = v.veh_id
-       WHERE r.rider_id = ? AND r.status IN ('requested','accepted','in_progress')
+       WHERE r.rider_id = ? AND r.status IN ('requested','accepted','in_progress','waiting_payment')
        ORDER BY r.req_at DESC LIMIT 1`, [req.user.user_id]
     );
     res.json(ride || null);
@@ -188,43 +188,17 @@ app.post('/api/rider/rides/book', auth, role('rider'), async (req, res) => {
     );
     if (active) return res.status(409).json({ error: 'You already have an active ride' });
 
-    // Find available verified driver in city with verified vehicle of requested type
-    let driverQuery = `
-      SELECT d.user_id AS driver_id, o.veh_id
-      FROM DRIVERS d
-      JOIN OWNS o        ON d.user_id = o.user_id
-      JOIN VEHICLES v    ON o.veh_id  = v.veh_id
-      WHERE d.avail_status = 'available'
-        AND d.verif_status = 'verified'
-        AND v.verif_st     = 'verified'
-        AND d.city = ?`;
-    const params = [city || 'Islamabad'];
-    if (veh_type) { driverQuery += ' AND v.type_ = ?'; params.push(veh_type); }
-    driverQuery += ' ORDER BY d.avg_rating DESC LIMIT 1';
-
-    const [[match]] = await conn.query(driverQuery, params);
-
     const [result] = await conn.query(
       `INSERT INTO RIDES (rider_id, driver_id, veh_id, pickup, dropoff, city, status, sched_at)
-       VALUES (?,?,?,?,?,?,?,?)`,
-      [req.user.user_id,
-       match?.driver_id || null,
-       match?.veh_id    || null,
-       pickup, dropoff,
-       city || 'Islamabad',
-       match ? 'accepted' : 'requested',
-       sched_at || null]
+       VALUES (?, NULL, NULL, ?, ?, ?, 'requested', ?)`,
+      [req.user.user_id, pickup, dropoff, city || 'Islamabad', sched_at || null]
     );
-
-    if (match) {
-      await conn.query(`UPDATE DRIVERS SET avail_status='on_trip' WHERE user_id=?`, [match.driver_id]);
-    }
 
     res.status(201).json({
       ride_id:   result.insertId,
-      status:    match ? 'accepted' : 'requested',
-      driver:    match ? { driver_id: match.driver_id } : null,
-      message:   match ? 'Driver found and assigned!' : 'Searching for a driver...'
+      status:    'requested',
+      driver:    null,
+      message:   'Ride requested successfully! Searching for drivers...'
     });
   } catch (err) {
     console.error(err);
@@ -249,18 +223,18 @@ app.put('/api/rider/rides/:id/cancel', auth, role('rider'), async (req, res) => 
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// POST /api/rider/payment  — pay for a completed ride
+// POST /api/rider/payment  — pay for a waiting ride
 app.post('/api/rider/payment', auth, role('rider'), async (req, res) => {
-  const { ride_id, method, promo_code } = req.body;
+  const { ride_id, method, promo_code, wallet_pin } = req.body;
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
 
     const [[ride]] = await conn.query(
-      `SELECT * FROM RIDES WHERE ride_id=? AND rider_id=? AND status='completed'`,
+      `SELECT * FROM RIDES WHERE ride_id=? AND rider_id=? AND status='waiting_payment'`,
       [ride_id, req.user.user_id]
     );
-    if (!ride) return res.status(404).json({ error: 'Ride not found or not completed' });
+    if (!ride) return res.status(404).json({ error: 'Ride not found or not awaiting payment' });
 
     // Check if payment already exists
     const [[existingPay]] = await conn.query(`SELECT pay_id FROM PAYMENTS WHERE ride_id=?`, [ride_id]);
@@ -284,7 +258,11 @@ app.post('/api/rider/payment', auth, role('rider'), async (req, res) => {
 
     // Deduct from wallet if method is wallet
     if (method === 'wallet') {
-      const [[rider]] = await conn.query(`SELECT wallet_balance FROM RIDERS WHERE user_id=?`, [req.user.user_id]);
+      const [[rider]] = await conn.query(`SELECT wallet_balance, wallet_pin FROM RIDERS WHERE user_id=?`, [req.user.user_id]);
+      if (rider.wallet_pin !== wallet_pin) {
+        await conn.rollback();
+        return res.status(403).json({ error: 'Incorrect wallet PIN' });
+      }
       if (rider.wallet_balance < amount) {
         await conn.rollback();
         return res.status(400).json({ error: 'Insufficient wallet balance' });
@@ -301,6 +279,16 @@ app.post('/api/rider/payment', auth, role('rider'), async (req, res) => {
     if (promoId) {
       await conn.query(`INSERT INTO APPLIES (pay_id, promo_id) VALUES (?,?)`, [payResult.insertId, promoId]);
     }
+
+    // Now finalize the ride!
+    await conn.query(`UPDATE RIDES SET status='completed' WHERE ride_id=?`, [ride_id]);
+    await conn.query(`UPDATE DRIVERS SET avail_status='available' WHERE user_id=?`, [ride.driver_id]);
+
+    const p_comm_pct = 20.00;
+    const p_net_earn = ride.fare * (1 - p_comm_pct / 100);
+    await conn.query(`INSERT IGNORE INTO DRIVER_EARNINGS (driver_id, ride_id, gross, comm_pct, net) VALUES (?,?,?,?,?)`,
+      [ride.driver_id, ride_id, ride.fare, p_comm_pct, p_net_earn]);
+    await conn.query(`INSERT INTO RIDE_HISTORY (ride_id, status) VALUES (?,'completed') ON DUPLICATE KEY UPDATE status='completed', arch_at=NOW()`, [ride_id]);
 
     await conn.commit();
     res.json({ message: 'Payment successful', pay_id: payResult.insertId, amount, discount });
@@ -395,6 +383,10 @@ app.put('/api/driver/status', auth, role('driver'), async (req, res) => {
   const valid = ['available','offline'];
   if (!valid.includes(status)) return res.status(400).json({ error: 'Status must be available or offline' });
   try {
+    const [[driver]] = await pool.query('SELECT avail_status FROM DRIVERS WHERE user_id=?', [req.user.user_id]);
+    if (driver.avail_status === 'on_trip') {
+      return res.status(403).json({ error: 'You cannot change your status while on a trip' });
+    }
     await pool.query(`UPDATE DRIVERS SET avail_status=? WHERE user_id=?`, [status, req.user.user_id]);
     res.json({ message: `Status updated to ${status}` });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -427,7 +419,7 @@ app.get('/api/driver/rides/current', auth, role('driver'), async (req, res) => {
        FROM RIDES r
        JOIN USERS u    ON r.rider_id = u.user_id
        LEFT JOIN VEHICLES v ON r.veh_id = v.veh_id
-       WHERE r.driver_id=? AND r.status IN ('accepted','in_progress')
+       WHERE r.driver_id=? AND r.status IN ('accepted','in_progress','waiting_payment')
        ORDER BY r.req_at DESC LIMIT 1`, [req.user.user_id]
     );
     res.json(ride || null);
@@ -439,6 +431,13 @@ app.put('/api/driver/rides/:id/accept', auth, role('driver'), async (req, res) =
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
+
+    // Check if driver is online
+    const [[driver]] = await conn.query(`SELECT avail_status FROM DRIVERS WHERE user_id=?`, [req.user.user_id]);
+    if (!driver || driver.avail_status !== 'available') {
+      await conn.rollback(); return res.status(403).json({ error: 'You must go online to accept rides' });
+    }
+
     const [[ride]] = await conn.query(`SELECT * FROM RIDES WHERE ride_id=? AND status='requested'`, [req.params.id]);
     if (!ride) { await conn.rollback(); return res.status(404).json({ error: 'Ride not available' }); }
 
@@ -477,8 +476,9 @@ app.put('/api/driver/rides/:id/start', auth, role('driver'), async (req, res) =>
 
 // PUT /api/driver/rides/:id/complete  — uses stored procedure
 app.put('/api/driver/rides/:id/complete', auth, role('driver'), async (req, res) => {
-  const { dist_km } = req.body;
+  const { dist_km, duration_mins } = req.body;
   if (!dist_km || dist_km <= 0) return res.status(400).json({ error: 'Distance required' });
+  if (!duration_mins || duration_mins <= 0) return res.status(400).json({ error: 'Duration required' });
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
@@ -489,14 +489,13 @@ app.put('/api/driver/rides/:id/complete', auth, role('driver'), async (req, res)
     if (!ride) { await conn.rollback(); return res.status(404).json({ error: 'Ride not found or not in progress' }); }
 
     // Call stored procedure
-    await conn.query('CALL CompleteRide(?, ?, ?, @fare, @net)', [req.params.id, dist_km, 20.00]);
+    await conn.query('CALL CompleteRide(?, ?, ?, ?, @fare, @net)', [req.params.id, dist_km, duration_mins, 20.00]);
     const [[result]] = await conn.query('SELECT @fare AS fare, @net AS net');
 
     await conn.commit();
     res.json({
-      message:  'Ride completed',
-      fare:     result.fare,
-      earnings: result.net
+      message:  'Payment requested. Waiting for rider.',
+      fare:     result.fare
     });
   } catch (err) {
     await conn.rollback();
@@ -584,9 +583,18 @@ app.put('/api/admin/users/:id/status', auth, role('admin'), async (req, res) => 
   if (!['active','suspended','deleted'].includes(status))
     return res.status(400).json({ error: 'Invalid status' });
   try {
-    await pool.query(`UPDATE USERS SET status=? WHERE user_id=?`, [status, req.params.id]);
+    if (status === 'suspended') {
+      await pool.query('CALL SuspendUser(?, ?)', [req.user.user_id, req.params.id]);
+    } else {
+      await pool.query(`UPDATE USERS SET status=? WHERE user_id=?`, [status, req.params.id]);
+    }
     res.json({ message: `User status updated to ${status}` });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { 
+    if (err.sqlState === '45000') {
+      return res.status(403).json({ error: err.message });
+    }
+    res.status(500).json({ error: err.message }); 
+  }
 });
 
 // GET /api/admin/vehicles

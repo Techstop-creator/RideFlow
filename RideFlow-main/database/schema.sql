@@ -22,6 +22,7 @@ CREATE TABLE USERS (
     password    VARCHAR(255) NOT NULL,
     role        ENUM('rider','driver','admin') NOT NULL,
     status      ENUM('active','suspended','deleted') NOT NULL DEFAULT 'active',
+    profile_photo VARCHAR(255) NULL,
     created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT pk_users        PRIMARY KEY (user_id),
     CONSTRAINT uq_users_email  UNIQUE (email),
@@ -29,10 +30,11 @@ CREATE TABLE USERS (
 );
 
 CREATE TABLE RIDERS (
-    user_id        INT          UNSIGNED NOT NULL,
-    reg_date       DATE         NOT NULL DEFAULT (CURRENT_DATE),
-    avg_rating     DECIMAL(3,2) NULL CHECK (avg_rating BETWEEN 0.00 AND 5.00),
+    user_id        INT           UNSIGNED NOT NULL,
+    reg_date       DATE          NOT NULL DEFAULT (CURRENT_DATE),
+    avg_rating     DECIMAL(3,2)  NULL CHECK (avg_rating BETWEEN 0.00 AND 5.00),
     wallet_balance DECIMAL(10,2) NOT NULL DEFAULT 0.00 CHECK (wallet_balance >= 0),
+    wallet_pin     VARCHAR(4)    NOT NULL DEFAULT '1234',
     CONSTRAINT pk_riders       PRIMARY KEY (user_id),
     CONSTRAINT fk_riders_users FOREIGN KEY (user_id) REFERENCES USERS(user_id)
         ON DELETE CASCADE ON UPDATE CASCADE
@@ -91,6 +93,7 @@ CREATE TABLE FARE_RULES (
     base_rate DECIMAL(10,2) NOT NULL CHECK (base_rate >= 0),
     km_rate   DECIMAL(10,2) NOT NULL CHECK (km_rate   >= 0),
     min_rate  DECIMAL(10,2) NOT NULL CHECK (min_rate  >= 0),
+    per_min_rate DECIMAL(10,2) NOT NULL DEFAULT 5.00 CHECK (per_min_rate >= 0),
     surge     DECIMAL(5,2)  NOT NULL DEFAULT 1.00 CHECK (surge >= 1.00),
     active    TINYINT(1)    NOT NULL DEFAULT 1 CHECK (active IN (0,1)),
     CONSTRAINT pk_fare_rules  PRIMARY KEY (rule_id),
@@ -122,7 +125,7 @@ CREATE TABLE RIDES (
     pickup    VARCHAR(255) NOT NULL,
     dropoff   VARCHAR(255) NOT NULL,
     city      VARCHAR(100) NOT NULL DEFAULT 'Islamabad',
-    status    ENUM('requested','accepted','in_progress','completed','cancelled') NOT NULL DEFAULT 'requested',
+    status    ENUM('requested','accepted','en_route','in_progress','waiting_payment','completed','cancelled') NOT NULL DEFAULT 'requested',
     fare      DECIMAL(10,2) NULL CHECK (fare >= 0),
     dist_km   DECIMAL(8,2)  NULL CHECK (dist_km >= 0),
     sched_at  DATETIME      NULL,
@@ -332,16 +335,42 @@ LEFT JOIN PROMO_CODES pc  ON ap.promo_id = pc.promo_id;
 -- ================================================================
 DELIMITER $$
 
+-- Procedure: Suspend a user (Only super admin can suspend, cannot suspend self)
+CREATE PROCEDURE SuspendUser(
+    IN p_admin_id INT UNSIGNED,
+    IN p_target_user_id INT UNSIGNED
+)
+BEGIN
+    DECLARE v_is_super TINYINT(1);
+    
+    -- 1. Prevent self-suspension
+    IF p_admin_id = p_target_user_id THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Super admin cannot suspend themselves.';
+    END IF;
+    
+    -- 2. Verify admin is a super admin
+    SELECT is_super INTO v_is_super FROM ADMINS WHERE user_id = p_admin_id;
+    
+    IF v_is_super IS NULL OR v_is_super = 0 THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Only a super admin can suspend users.';
+    END IF;
+    
+    -- 3. Perform suspension
+    UPDATE USERS SET status = 'suspended' WHERE user_id = p_target_user_id;
+END$$
+
 -- Procedure: Calculate fare using distance and vehicle type with surge
 CREATE PROCEDURE CalculateFare(
     IN  p_ride_id  INT UNSIGNED,
     IN  p_dist_km  DECIMAL(8,2),
+    IN  p_duration_mins INT,
     OUT p_fare     DECIMAL(10,2)
 )
 BEGIN
     DECLARE v_base_rate DECIMAL(10,2) DEFAULT 50.00;
     DECLARE v_km_rate   DECIMAL(10,2) DEFAULT 20.00;
     DECLARE v_min_rate  DECIMAL(10,2) DEFAULT 80.00;
+    DECLARE v_per_min_rate DECIMAL(10,2) DEFAULT 5.00;
     DECLARE v_surge     DECIMAL(5,2)  DEFAULT 1.00;
     DECLARE v_veh_type  VARCHAR(20);
     DECLARE v_raw_fare  DECIMAL(10,2);
@@ -356,8 +385,8 @@ BEGIN
 
     -- Get fare rule for vehicle type
     IF v_veh_type IS NOT NULL THEN
-        SELECT base_rate, km_rate, min_rate, surge
-        INTO v_base_rate, v_km_rate, v_min_rate, v_surge
+        SELECT base_rate, km_rate, min_rate, per_min_rate, surge
+        INTO v_base_rate, v_km_rate, v_min_rate, v_per_min_rate, v_surge
         FROM FARE_RULES
         WHERE v_type = v_veh_type AND active = 1
         LIMIT 1;
@@ -369,8 +398,8 @@ BEGIN
         SET v_surge = GREATEST(v_surge, 1.50);
     END IF;
 
-    -- Calculate fare: max of min_rate OR (base + km * dist) * surge
-    SET v_raw_fare = (v_base_rate + (v_km_rate * p_dist_km)) * v_surge;
+    -- Calculate fare: max of min_rate OR (base + km*dist + min*duration) * surge
+    SET v_raw_fare = (v_base_rate + (v_km_rate * p_dist_km) + (v_per_min_rate * p_duration_mins)) * v_surge;
     SET p_fare     = GREATEST(v_min_rate, v_raw_fare);
 
     -- Update the ride record
@@ -425,40 +454,24 @@ BEGIN
     ORDER BY total_trips DESC;
 END$$
 
--- Procedure: Complete a ride (sets fare, creates earnings)
+-- Procedure: Request Payment (Calculates fare and waits for rider)
 CREATE PROCEDURE CompleteRide(
-    IN p_ride_id    INT UNSIGNED,
-    IN p_dist_km    DECIMAL(8,2),
-    IN p_comm_pct   DECIMAL(5,2),
-    OUT p_fare      DECIMAL(10,2),
-    OUT p_net_earn  DECIMAL(10,2)
+    IN p_ride_id       INT UNSIGNED,
+    IN p_dist_km       DECIMAL(8,2),
+    IN p_duration_mins INT,
+    IN p_comm_pct      DECIMAL(5,2),
+    OUT p_fare         DECIMAL(10,2),
+    OUT p_net_earn     DECIMAL(10,2)
 )
 BEGIN
-    DECLARE v_driver_id INT UNSIGNED;
-
     -- Calculate fare via CalculateFare procedure
-    CALL CalculateFare(p_ride_id, p_dist_km, p_fare);
+    CALL CalculateFare(p_ride_id, p_dist_km, p_duration_mins, p_fare);
 
-    -- Get driver
-    SELECT driver_id INTO v_driver_id FROM RIDES WHERE ride_id = p_ride_id;
+    -- Mark ride as waiting for payment
+    UPDATE RIDES SET status = 'waiting_payment' WHERE ride_id = p_ride_id;
 
-    -- Mark ride completed
-    UPDATE RIDES SET status = 'completed' WHERE ride_id = p_ride_id;
-
-    -- Update driver availability
-    UPDATE DRIVERS SET avail_status = 'available' WHERE user_id = v_driver_id;
-
-    -- Calculate net earnings
-    SET p_net_earn = p_fare * (1 - p_comm_pct / 100);
-
-    -- Insert earnings record (ignore if already exists)
-    INSERT IGNORE INTO DRIVER_EARNINGS (driver_id, ride_id, gross, comm_pct, net)
-    VALUES (v_driver_id, p_ride_id, p_fare, p_comm_pct, p_net_earn);
-
-    -- Archive ride
-    INSERT INTO RIDE_HISTORY (ride_id, status)
-    VALUES (p_ride_id, 'completed')
-    ON DUPLICATE KEY UPDATE status = 'completed', arch_at = NOW();
+    -- Net earnings handled later, set to 0 for now
+    SET p_net_earn = 0;
 END$$
 
 DELIMITER ;

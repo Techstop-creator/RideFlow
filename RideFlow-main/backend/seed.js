@@ -64,9 +64,12 @@ async function seed() {
     console.log('✅ Drivers inserted');
 
     await conn.query(`
-      INSERT INTO RIDERS (user_id, avg_rating, wallet_balance) VALUES
-      (8, 4.90, 500.00),(9, 4.70, 1200.00),(10, 4.50, 250.00),
-      (11, 4.80, 750.00),(12, 4.60, 100.00)
+      INSERT INTO RIDERS (user_id, avg_rating, wallet_balance, wallet_pin) VALUES
+      (8, 4.90, 500.00, '1234'),
+      (9, 4.70, 1200.00, '1234'),
+      (10, 4.50, 250.00, '1234'),
+      (11, 4.80, 750.00, '1234'),
+      (12, 4.60, 100.00, '1234')
     `);
     console.log('✅ Riders inserted');
 
@@ -88,13 +91,13 @@ async function seed() {
     console.log('✅ Vehicles + Owns inserted');
 
     await conn.query(`
-      INSERT INTO FARE_RULES (v_type, base_rate, km_rate, min_rate, surge, active) VALUES
-      ('sedan',  80.00,25.00,100.00,1.00,1),
-      ('suv',   120.00,35.00,150.00,1.00,1),
-      ('bike',   40.00,12.00, 60.00,1.00,1),
-      ('van',   150.00,40.00,200.00,1.00,1),
-      ('rickshaw',40.00,10.00,50.00,1.00,1),
-      ('other',  60.00,18.00, 80.00,1.00,1)
+      INSERT INTO FARE_RULES (v_type, base_rate, km_rate, min_rate, per_min_rate, surge, active) VALUES
+      ('sedan',  80.00,25.00,100.00, 5.00, 1.00,1),
+      ('suv',   120.00,35.00,150.00, 7.00, 1.00,1),
+      ('bike',   40.00,12.00, 60.00, 3.00, 1.00,1),
+      ('van',   150.00,40.00,200.00, 8.00, 1.00,1),
+      ('rickshaw',40.00,10.00,50.00, 2.00, 1.00,1),
+      ('other',  60.00,18.00, 80.00, 4.00, 1.00,1)
     `);
     console.log('✅ Fare rules inserted');
 

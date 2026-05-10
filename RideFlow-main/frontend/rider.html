@@ -257,10 +257,14 @@ tr:hover td{background:#fafbff;}
       <div class="promo-result" id="promoResult"></div>
     </div>
     <div class="form-group"><label>Payment Method</label>
-      <select id="payMethod">
+      <select id="payMethod" onchange="document.getElementById('pinGroup').style.display = this.value === 'wallet' ? 'block' : 'none'">
         <option value="cash">Cash</option><option value="wallet">Wallet</option>
         <option value="card">Card</option><option value="online">Online</option>
       </select>
+    </div>
+    <div class="form-group" id="pinGroup" style="display:none;">
+      <label>Wallet PIN</label>
+      <input type="password" id="walletPin" placeholder="Enter 4-digit PIN" maxlength="4"/>
     </div>
     <input type="hidden" id="payRideId"/>
     <div style="display:flex;gap:10px;margin-top:8px;">
@@ -347,7 +351,13 @@ async function loadActiveRide() {
     }
     document.getElementById('activeRideBanner').style.display = 'flex';
     document.getElementById('activeBannerText').textContent = `${ride.pickup} → ${ride.dropoff}`;
-    const statusColor = { requested:'badge-yellow', accepted:'badge-blue', in_progress:'badge-green' };
+    const statusColor = { requested:'badge-yellow', accepted:'badge-blue', in_progress:'badge-green', waiting_payment:'badge-yellow' };
+    
+    // Auto-trigger pay modal if waiting for payment
+    if (ride.status === 'waiting_payment' && document.getElementById('payModal').style.display === 'none') {
+      openPayModal(ride.ride_id, ride.fare);
+    }
+
     el.innerHTML = `
       <div class="form-card">
         <h3>🚗 Your Ride <span class="badge ${statusColor[ride.status]||'badge-gray'}">${ride.status.replace('_',' ')}</span></h3>
@@ -360,12 +370,18 @@ async function loadActiveRide() {
           ${ride.driver_rating ? `<div><label>⭐ Driver Rating</label><div style="font-weight:600;margin-top:4px">${ride.driver_rating}/5</div></div>` : ''}
           <div><label>📅 Requested At</label><div style="font-weight:600;margin-top:4px">${new Date(ride.req_at).toLocaleString()}</div></div>
         </div>
-        ${ride.status === 'completed' ? `
-          <div style="margin-top:20px;padding:16px;background:#e8f5e9;border-radius:8px">
+        ${ride.status === 'waiting_payment' ? `
+          <div style="margin-top:20px;padding:16px;background:#fff8e1;border-radius:8px">
             <b>Fare: Rs. ${ride.fare?.toFixed(2) || '—'}</b> &nbsp;|&nbsp; Distance: ${ride.dist_km || '—'} km
           </div>
           <div style="display:flex;gap:10px;margin-top:16px">
             <button class="btn btn-primary" onclick="openPayModal(${ride.ride_id},${ride.fare})">💳 Pay Now</button>
+          </div>` : ''}
+        ${ride.status === 'completed' ? `
+          <div style="margin-top:20px;padding:16px;background:#e8f5e9;border-radius:8px">
+            <b>Fare: Rs. ${ride.fare?.toFixed(2) || '—'}</b> &nbsp;|&nbsp; Paid Successfully
+          </div>
+          <div style="display:flex;gap:10px;margin-top:16px">
             <button class="btn btn-outline" onclick="openRatingModal(${ride.ride_id})">⭐ Rate Driver</button>
           </div>` : ''}
         ${['requested','accepted'].includes(ride.status) ? `
@@ -481,6 +497,8 @@ function openPayModal(rideId, fare) {
   document.getElementById('payRideId').value    = rideId;
   document.getElementById('payFare').value      = `Rs. ${parseFloat(fare).toFixed(2)}`;
   document.getElementById('promoCode').value    = '';
+  document.getElementById('walletPin').value    = '';
+  document.getElementById('pinGroup').style.display = document.getElementById('payMethod').value === 'wallet' ? 'block' : 'none';
   document.getElementById('promoResult').style.display = 'none';
   document.getElementById('payModal').style.display    = 'flex';
 }
@@ -501,7 +519,13 @@ async function submitPayment() {
   const ride_id    = document.getElementById('payRideId').value;
   const method     = document.getElementById('payMethod').value;
   const promo_code = document.getElementById('promoCode').value.trim() || undefined;
-  const r = await fetch(`${API}/rider/payment`, { method:'POST', headers, body: JSON.stringify({ride_id,method,promo_code}) });
+  const wallet_pin = document.getElementById('walletPin').value;
+  
+  if (method === 'wallet' && !wallet_pin) {
+    return showMsg('payMsg', 'Please enter your wallet PIN', 'error');
+  }
+
+  const r = await fetch(`${API}/rider/payment`, { method:'POST', headers, body: JSON.stringify({ride_id,method,promo_code,wallet_pin}) });
   const d = await r.json();
   if (r.ok) {
     closeModal(); alert(`✅ Payment successful!\nAmount paid: Rs. ${d.amount.toFixed(2)}\nDiscount: Rs. ${d.discount.toFixed(2)}`);
@@ -513,6 +537,7 @@ async function submitPayment() {
 
 // Init
 loadActiveRide();
+setInterval(loadActiveRide, 5000);
 </script>
 </body>
 </html>

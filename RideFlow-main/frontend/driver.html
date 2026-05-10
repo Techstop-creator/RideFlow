@@ -160,18 +160,22 @@ tr:hover td{background:#f8fffc;}
 <!-- COMPLETE RIDE MODAL -->
 <div id="completeModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:100;align-items:center;justify-content:center;">
   <div style="background:#fff;border-radius:16px;padding:30px;width:380px;">
-    <h3 style="margin-bottom:16px;">✅ Complete Ride</h3>
+    <h3 style="margin-bottom:16px;">✅ Calculate Fare & Request Payment</h3>
     <div class="form-card" style="box-shadow:none;padding:0;margin:0">
       <div id="completeMsg" class="msg"></div>
       <div style="margin-bottom:14px">
         <label>Distance Travelled (km)</label>
         <input type="number" id="completeDist" placeholder="e.g. 12.5" min="0.1" step="0.1"/>
       </div>
-      <div style="font-size:.85rem;color:#666;margin-bottom:16px">Fare will be auto-calculated based on distance and vehicle type using the stored procedure.</div>
+      <div style="margin-bottom:14px">
+        <label>Duration (mins)</label>
+        <input type="number" id="completeDur" placeholder="e.g. 15" min="1" step="1"/>
+      </div>
+      <div style="font-size:.85rem;color:#666;margin-bottom:16px">Fare will be auto-calculated based on distance, duration, and vehicle type using the stored procedure.</div>
     </div>
     <input type="hidden" id="completeRideId"/>
     <div style="display:flex;gap:10px">
-      <button class="btn btn-success" onclick="completeRide()" style="flex:1">Calculate & Complete</button>
+      <button class="btn btn-success" onclick="completeRide()" style="flex:1">Request Payment</button>
       <button class="btn btn-outline" onclick="document.getElementById('completeModal').style.display='none'" style="flex:1">Cancel</button>
     </div>
   </div>
@@ -204,7 +208,7 @@ const user  = JSON.parse(localStorage.getItem('rf_user') || '{}');
 if (!token || user.role !== 'driver') { location.href = 'index.html'; }
 
 const headers = { 'Content-Type':'application/json', 'Authorization':'Bearer '+token };
-let driverOnline = false;
+let driverStatus = 'offline'; // 'available', 'offline', 'on_trip'
 let riderStar = 0;
 
 document.getElementById('sidebarUser').innerHTML = `<b>${user.full_name}</b><br/>${user.email}`;
@@ -229,7 +233,7 @@ async function initDashboard() {
   try {
     const r = await fetch(`${API}/driver/profile`, { headers });
     const d = await r.json();
-    driverOnline = d.avail_status === 'available';
+    driverStatus = d.avail_status;
     updateToggle();
     loadEarnings(true);
     loadCurrentRide(true);
@@ -239,18 +243,27 @@ async function initDashboard() {
 function updateToggle() {
   const t = document.getElementById('availToggle');
   const l = document.getElementById('availLabel');
-  t.className = 'toggle' + (driverOnline ? ' on' : '');
-  l.textContent = driverOnline ? '🟢 Online — Ready to receive rides' : '🔴 Offline';
-  l.style.color = driverOnline ? '#0d9488' : '#666';
+  t.className = 'toggle' + (driverStatus !== 'offline' ? ' on' : '');
+  
+  if (driverStatus === 'on_trip') {
+    l.textContent = '🚗 On Trip — Status locked until ride completion';
+    l.style.color = '#1a73e8';
+  } else {
+    l.textContent = driverStatus === 'available' ? '🟢 Online — Ready to receive rides' : '🔴 Offline';
+    l.style.color = driverStatus === 'available' ? '#0d9488' : '#666';
+  }
 }
 
 async function toggleAvail() {
-  const newStatus = driverOnline ? 'offline' : 'available';
+  if (driverStatus === 'on_trip') {
+    return showMsg('availMsg', 'You cannot change your status while on a trip', 'error');
+  }
+  const newStatus = driverStatus === 'available' ? 'offline' : 'available';
   try {
     const r = await fetch(`${API}/driver/status`, { method:'PUT', headers, body: JSON.stringify({status:newStatus}) });
     const d = await r.json();
     if (r.ok) {
-      driverOnline = !driverOnline;
+      driverStatus = newStatus;
       updateToggle();
       showMsg('availMsg', d.message, 'success');
     } else showMsg('availMsg', d.error, 'error');
@@ -309,6 +322,10 @@ async function loadCurrentRide(quiet = false) {
     const r    = await fetch(`${API}/driver/rides/current`, { headers });
     const ride = await r.json();
     if (!ride) {
+      if (driverStatus === 'on_trip') {
+         driverStatus = 'available';
+         updateToggle();
+      }
       if (!quiet) el.innerHTML = `
         <div class="form-card" style="text-align:center;padding:40px">
           <div style="font-size:2.5rem">🚫</div>
@@ -319,7 +336,7 @@ async function loadCurrentRide(quiet = false) {
       if (home) home.innerHTML = '';
       return;
     }
-    const statusBadge = { accepted:'badge-yellow', in_progress:'badge-green' };
+    const statusBadge = { accepted:'badge-yellow', in_progress:'badge-green', waiting_payment:'badge-yellow' };
     const rideHtml = `
       <div class="current-ride-banner">
         <div style="display:flex;justify-content:space-between;align-items:center">
@@ -338,7 +355,8 @@ async function loadCurrentRide(quiet = false) {
         </div>
         <div style="display:flex;gap:10px;margin-top:20px;flex-wrap:wrap">
           ${ride.status === 'accepted' ? `<button class="btn btn-success" onclick="startRide(${ride.ride_id})">▶ Start Ride</button>` : ''}
-          ${ride.status === 'in_progress' ? `<button class="btn btn-primary" onclick="openCompleteModal(${ride.ride_id})">✅ Complete Ride</button>` : ''}
+          ${ride.status === 'in_progress' ? `<button class="btn btn-primary" onclick="openCompleteModal(${ride.ride_id})">✅ Request Payment</button>` : ''}
+          ${ride.status === 'waiting_payment' ? `<button class="btn btn-outline" disabled>⏳ Waiting for Rider Payment...</button>` : ''}
           <button class="btn btn-outline" onclick="openRateRiderModal(${ride.ride_id})">⭐ Rate Rider</button>
         </div>
       </div>`;
@@ -350,7 +368,12 @@ async function loadCurrentRide(quiet = false) {
 async function startRide(id) {
   const r = await fetch(`${API}/driver/rides/${id}/start`, { method:'PUT', headers });
   const d = await r.json();
-  if (r.ok) { alert('🚗 Ride started!'); loadCurrentRide(); }
+  if (r.ok) { 
+    driverStatus = 'on_trip';
+    updateToggle();
+    alert('🚗 Ride started!'); 
+    loadCurrentRide(); 
+  }
   else alert(d.error);
 }
 
@@ -363,15 +386,17 @@ function openCompleteModal(id) {
 async function completeRide() {
   const ride_id = document.getElementById('completeRideId').value;
   const dist_km = parseFloat(document.getElementById('completeDist').value);
+  const duration_mins = parseInt(document.getElementById('completeDur').value);
   if (!dist_km || dist_km <= 0) return showMsg('completeMsg','Enter a valid distance');
+  if (!duration_mins || duration_mins <= 0) return showMsg('completeMsg','Enter a valid duration');
   try {
     const r = await fetch(`${API}/driver/rides/${ride_id}/complete`, {
-      method:'PUT', headers, body: JSON.stringify({dist_km})
+      method:'PUT', headers, body: JSON.stringify({dist_km, duration_mins})
     });
     const d = await r.json();
     if (r.ok) {
       document.getElementById('completeModal').style.display = 'none';
-      alert(`✅ Ride completed!\nFare: Rs. ${parseFloat(d.fare).toFixed(2)}\nYour earnings: Rs. ${parseFloat(d.earnings).toFixed(2)}`);
+      alert(`✅ Fare Calculated: Rs. ${parseFloat(d.fare).toFixed(2)}\nPayment requested. Waiting for rider to pay...`);
       loadCurrentRide(); loadEarnings(true);
     } else showMsg('completeMsg', d.error);
   } catch { showMsg('completeMsg','Server error'); }
@@ -476,6 +501,7 @@ async function submitRiderRating() {
 }
 
 initDashboard();
+setInterval(() => { if (driverStatus !== 'offline') loadCurrentRide(true); }, 5000);
 </script>
 </body>
 </html>
